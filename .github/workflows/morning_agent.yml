@@ -1,0 +1,28 @@
+name: matto 祭り情報自動収集
+
+on:
+  schedule:
+    # 毎日 12:00 JST（03:00 UTC）に実行
+    - cron: '0 3 * * *'
+  workflow_dispatch:  # 手動実行ボタン
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: パッケージインストール
+        run: pip install anthropic requests beautifulsoup4
+
+      - name: 祭り情報を収集・登録
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python morning_agent.py
