@@ -14,6 +14,7 @@ matto morning_agent.py
 
 import os
 import sys
+import re
 import json
 import uuid
 import time
@@ -37,14 +38,6 @@ SUPABASE_HEADERS = {
 # 公式スクレイピング対象サイト
 SCRAPE_TARGETS = [
     {
-        "name": "じゃらんnet イベント・お祭り",
-        "url":  "https://www.jalan.net/event/evt_genre_list/?genre_cd=0200&sort=date",
-    },
-    {
-        "name": "じゃらんnet 花火大会",
-        "url":  "https://www.jalan.net/event/evt_genre_list/?genre_cd=0203&sort=date",
-    },
-    {
         "name": "ウォーカープラス 花火大会",
         "url":  "https://hanabi.walkerplus.com/list/",
     },
@@ -54,9 +47,12 @@ SCRAPE_TARGETS = [
     },
     {
         "name": "まつりずむ",
-        "url":  "https://matsurism.com/festivals/",
+        "url":  "https://www.matsurism.com/allmatsuri",
     },
 ]
+# 注: じゃらんnetは全国横断のジャンル一覧URL（genre_cd指定）が廃止され、
+# 都道府県別ページ（/event/010000/ 等）のみになったため対象から除外。
+# 47都道府県を巡回する場合は別途対応が必要。
 
 HEADERS = {
     "User-Agent": (
@@ -218,20 +214,47 @@ JSON形式に整理してください。
 # ジオコーディング（Nominatim）
 # ─────────────────────────────────────────
 
+def _nominatim_search(query: str):
+    resp = requests.get(
+        "https://nominatim.openstreetmap.org/search",
+        params={"q": query, "format": "json", "limit": 1, "countrycodes": "jp"},
+        headers={"User-Agent": "matto-festival-agent/2.0"},
+        timeout=10,
+    )
+    data = resp.json()
+    if data:
+        return float(data[0]["lat"]), float(data[0]["lon"])
+    return None
+
+
+# 「都道府県+市区町村（東京23区の場合は区まで）」を抜き出すための簡易パターン
+_PREF_CITY_RE = re.compile(
+    r"(北海道|..[都道府県])(.{1,6}?[市区町村])(.{1,6}?区)?"
+)
+
+
 def geocode(location: str):
-    """住所 → 緯度経度（OpenStreetMap Nominatim）"""
+    """
+    住所 → 緯度経度（OpenStreetMap Nominatim）
+    会場名などを含む詳細住所でヒットしない場合は、都道府県市区町村レベルまで
+    削って再試行する（ピンが表示されないより、多少ズレても市区町村中心に
+    表示される方が良いというフォールバック）。
+    """
     try:
-        resp = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": location, "format": "json", "limit": 1, "countrycodes": "jp"},
-            headers={"User-Agent": "matto-festival-agent/2.0"},
-            timeout=10,
-        )
-        data = resp.json()
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
+        coords = _nominatim_search(location)
+        if coords:
+            return coords
     except Exception:
         pass
+
+    m = _PREF_CITY_RE.search(location)
+    if m and m.group(0) != location:
+        time.sleep(1.0)
+        try:
+            return _nominatim_search(m.group(0))
+        except Exception:
+            pass
+
     return None
 
 
