@@ -187,7 +187,7 @@ JSON形式に整理してください。
     "category": "花火 or 祭り or 市 or 縁日 or フリーマーケット",
     "date": "YYYY-MM-DDTHH:MM:00+09:00",
     "description": "テキストに記載の説明（100文字以内）",
-    "location": "開催地（都道府県市区町村）",
+    "location": "開催地（都道府県市区町村に加え、会場名・番地など判明している範囲で最大限詳しく）",
     "has_stalls": true or false
   }}
 ]
@@ -273,6 +273,7 @@ def run_scrape(targets: list[dict], existing_names: set[str]) -> list[dict]:
 
             location = ev.get("location", "")
             coords   = geocode(location) if location else None
+            time.sleep(1.0)  # Nominatim利用ポリシー（1リクエスト/秒）を厳守
             if not coords:
                 print(f"  座標取得失敗: {name}（{location}）→ スキップ")
                 continue
